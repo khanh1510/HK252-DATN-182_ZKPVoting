@@ -1,20 +1,7 @@
 'use strict';
 
-/**
- * Generate input.json for vote.circom (multiple-choice, commit-reveal).
- *
- * Public signals: merkleRoot, nullifierHash, voteCommitment,
- *                 numCandidates, maxChoices, allowAbstain
- * Private signals: secret, nullifier, choices[8], blinding,
- *                  pathElements[20], pathIndices[20]
- *
- * choices[0] = 1 → abstain; choices[1..N-1] = 1 → vote for candidate i
- *
- * Usage:
- *   node scripts/generate_input.js
- *   NUM_CANDIDATES=4 CHOICES=1,2 MAX_CHOICES=2 ALLOW_ABSTAIN=1 node scripts/generate_input.js
- *   CHOICES=0 node scripts/generate_input.js   # abstain
- */
+// Usage: NUM_CANDIDATES=4 CHOICES=1,2 TOTAL_VOTES=2 node scripts/generate_input.js
+// CHOICES=0 to abstain
 
 const fs     = require('fs');
 const path   = require('path');

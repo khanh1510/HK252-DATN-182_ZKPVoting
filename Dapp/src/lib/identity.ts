@@ -1,10 +1,3 @@
-/**
- * Voter identity: secret + nullifier + commitment + nullifierHash.
- *
- * Identity is generated client-side and never sent to the server. Backups are
- * exported as JSON for the user to keep safely (without it, they cannot vote
- * or reveal — by design).
- */
 import { randomFieldElement } from './random'
 import { getPoseidon } from './poseidon'
 
@@ -59,13 +52,7 @@ export function identityFromFile(raw: unknown): VoterIdentity {
   return { secret: BigInt(f.secret), nullifier: BigInt(f.nullifier) }
 }
 
-/**
- * Vote ballot backup: stored locally so the voter can reveal during the reveal
- * phase even if they close their browser between vote and reveal.
- *
- * votes[8]: integer array — votes[0]=abstain weight, votes[1..7]=candidate weights.
- * blinding is deterministic (Poseidon(secret, pool)) — no separate backup needed.
- */
+// Stored in localStorage so the voter can reveal even after closing the browser
 export type BallotBackup = {
   pool: string
   nullifierHash: string

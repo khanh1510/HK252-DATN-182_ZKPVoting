@@ -1,17 +1,6 @@
 'use strict';
 
-/**
- * Groth16 Trusted Setup
- * ---------------------
- * Phase 1 (Powers of Tau): universal, circuit-agnostic. Reusable.
- * Phase 2 (Circuit-specific): per-circuit ceremony with contributor entropy.
- *   - Must be re-run whenever vote.circom changes.
- *   - Security: at least one contributor must have deleted their toxic waste.
- *
- * Usage:
- *   node scripts/trusted_setup.js           # skip Phase 2 if R1CS unchanged
- *   node scripts/trusted_setup.js --force   # always re-run Phase 2
- */
+// --force flag re-runs Phase 2 even if R1CS hasn't changed
 
 const {execSync} = require('child_process');
 const fs = require('fs');

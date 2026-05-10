@@ -8,26 +8,14 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
- * @title VotingPool — Universal anonymous voting (single / multiple / cumulative)
- *
- * @notice Voting type is determined by two parameters set at creation:
- *
- *   totalVotes=1,  maxPerCandidate=1  →  Single choice
- *   totalVotes=K,  maxPerCandidate=1  →  Multiple choice (pick up to K)
- *   totalVotes=N,  maxPerCandidate=N  →  Cumulative (distribute N votes freely)
- *   totalVotes=N,  maxPerCandidate=C  →  Cumulative with per-candidate cap
- *
- *   All values 1..255 are valid.
- *
- * @dev One Groth16 circuit + verifier covers every mode — no redeploy needed
- *      when adding new voting types.
+ * @title VotingPool
+ * @notice Anonymous voting contract using Groth16 ZK proofs and commit-reveal.
+ * Voting type is set at creation via totalVotes + maxPerCandidate:
+ * (1,1) = single choice; (K,1) = multiple choice; (N,N) = cumulative.
  */
 contract VotingPool is Ownable, EIP712 {
     using IncrementalBinaryTree for IncrementalTreeData;
 
-    // ──────────────────────────────────────────────────────────────────
-    // Constants
-    // ──────────────────────────────────────────────────────────────────
 
     uint8   public constant DEPTH          = 20;
     uint8   public constant MAX_CANDIDATES = 8;
@@ -36,16 +24,10 @@ contract VotingPool is Ownable, EIP712 {
         "VoterApproval(address voter,address pool,uint256 deadline)"
     );
 
-    // ──────────────────────────────────────────────────────────────────
-    // Enums
-    // ──────────────────────────────────────────────────────────────────
 
     enum EligibilityMode { OPEN, ADMIN_APPROVED }
     enum Phase           { Registration, Voting, Reveal, Ended }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Immutable config
-    // ──────────────────────────────────────────────────────────────────
 
     IGroth16Verifier public immutable verifier;
     EligibilityMode  public immutable mode;
@@ -59,9 +41,6 @@ contract VotingPool is Ownable, EIP712 {
     string   public proposal;
     string[] private _candidateNames;
 
-    // ──────────────────────────────────────────────────────────────────
-    // Mutable state
-    // ──────────────────────────────────────────────────────────────────
 
     IncrementalTreeData internal _tree;
 
@@ -82,9 +61,6 @@ contract VotingPool is Ownable, EIP712 {
     uint256 public revealDeadline;
     Phase   public currentPhase;
 
-    // ──────────────────────────────────────────────────────────────────
-    // Events
-    // ──────────────────────────────────────────────────────────────────
 
     event LeafInserted(uint256 indexed leafIndex, uint256 commitment, uint256 newRoot);
     event VoterRegistered(uint256 indexed leafIndex, uint256 indexed nullifierHash);
@@ -93,9 +69,6 @@ contract VotingPool is Ownable, EIP712 {
     event VoteRevealed(uint256 indexed nullifierHash, uint256[8] votes);
     event PhaseChanged(Phase oldPhase, Phase newPhase);
 
-    // ──────────────────────────────────────────────────────────────────
-    // Errors
-    // ──────────────────────────────────────────────────────────────────
 
     error InvalidPhase();
     error DeadlineExpired();
@@ -118,9 +91,6 @@ contract VotingPool is Ownable, EIP712 {
     error InvalidConfig();
     error NotWeightedPoll();
 
-    // ──────────────────────────────────────────────────────────────────
-    // Constructor
-    // ──────────────────────────────────────────────────────────────────
 
     constructor(
         address         _verifier,
@@ -170,17 +140,8 @@ contract VotingPool is Ownable, EIP712 {
         currentPhase = Phase.Registration;
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Registration
-    // ──────────────────────────────────────────────────────────────────
 
-    /**
-     * @param commitment      Poseidon(secret, nullifier)
-     * @param nullifierHash   Poseidon(secret) — required for weighted polls so admin
-     *                        can assign weight via setWeight(). Pass 0 for unweighted polls.
-     * @param adminSig        EIP-712 signature (ADMIN_APPROVED mode only)
-     * @param sigDeadline     Signature expiry (ADMIN_APPROVED mode only)
-     */
+    // nullifierHash only used for weighted polls so admin can call setWeight(); pass 0 otherwise
     function register(
         uint256 commitment,
         uint256 nullifierHash,
@@ -206,12 +167,6 @@ contract VotingPool is Ownable, EIP712 {
         }
     }
 
-    /**
-     * @notice Admin assigns a voting weight to a registered voter (weighted polls only).
-     *         Must be called after the voter registers and before reveal phase.
-     * @param nullifierHash  The voter's nullifierHash (emitted in VoterRegistered event)
-     * @param weight         Multiplier applied to all vote counts at reveal (min 1)
-     */
     function setWeight(uint256 nullifierHash, uint256 weight) external onlyOwner {
         if (!isWeighted) revert NotWeightedPoll();
         if (weight == 0) weight = 1;
@@ -235,14 +190,7 @@ contract VotingPool is Ownable, EIP712 {
         if (signer != owner()) revert InvalidApproval();
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Voting
-    // ──────────────────────────────────────────────────────────────────
 
-    /**
-     * @param _pubSignals [merkleRoot, nullifierHash, voteCommitment,
-     *                     numCandidates, totalVotes, maxPerCandidate, allowAbstain]
-     */
     function castVote(
         uint256[2]    calldata _pA,
         uint256[2][2] calldata _pB,
@@ -270,15 +218,7 @@ contract VotingPool is Ownable, EIP712 {
         emit VoteCast(nf, _pubSignals[2]);
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Reveal
-    // ──────────────────────────────────────────────────────────────────
 
-    /**
-     * @param votes  Integer allocation per slot (votes[0]=abstain, votes[1..N]=real).
-     *               Poseidon(votes[0..7], blinding) must equal the stored commitment.
-     * @param expectedCommit  Poseidon(votes[0..7], blinding) computed off-chain.
-     */
     function revealVote(
         uint256      nullifierHash,
         uint256[8] calldata votes,
@@ -290,7 +230,7 @@ contract VotingPool is Ownable, EIP712 {
         if (!nullifierUsed[nullifierHash])    revert DoubleVote();
         if (voteCommitmentOf[nullifierHash] != expectedCommit) revert CommitmentMismatch();
 
-        // ── Sanity checks (belt-and-suspenders; ZK proof already enforced these) ──
+        // Extra checks — ZK proof already enforces these, but verify on-chain anyway
 
         uint256 abstainVotes = votes[0];
         uint256 realSum      = 0;
@@ -322,9 +262,6 @@ contract VotingPool is Ownable, EIP712 {
         emit VoteRevealed(nullifierHash, votes);
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Phase transitions
-    // ──────────────────────────────────────────────────────────────────
 
     function startVoting() external onlyOwner {
         if (currentPhase != Phase.Registration) revert InvalidPhaseTransition();
@@ -347,9 +284,6 @@ contract VotingPool is Ownable, EIP712 {
         emit PhaseChanged(old, newPhase);
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Views
-    // ──────────────────────────────────────────────────────────────────
 
     function currentPhaseActual() public view returns (Phase) {
         if (currentPhase == Phase.Registration && block.timestamp > registrationDeadline) return Phase.Voting;

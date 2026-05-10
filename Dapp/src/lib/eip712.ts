@@ -1,9 +1,3 @@
-/**
- * EIP-712 helpers for admin "VoterApproval" signatures.
- * Mirrors the typehash declared in VotingPool.sol:
- *
- *   VoterApproval(address voter,address pool,uint256 deadline)
- */
 import type { Signer } from 'ethers'
 
 export const VOTER_APPROVAL_TYPES = {

@@ -1,7 +1,3 @@
-/**
- * Reconstruct the on-chain Merkle tree from LeafInserted events,
- * so we can build inclusion proofs for the circuit.
- */
 import { Contract } from 'ethers'
 import { IncrementalMerkleTree } from '@zk-kit/incremental-merkle-tree'
 import { POOL_ABI } from './abi'

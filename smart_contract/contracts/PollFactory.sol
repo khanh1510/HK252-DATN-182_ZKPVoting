@@ -5,13 +5,10 @@ import {VotingPool} from "./VotingPool.sol";
 import {IGroth16Verifier} from "./interfaces/IGroth16Verifier.sol";
 
 /**
- * @title PollFactory — Deploys VotingPool instances on demand
- * @notice One factory + one shared verifier. Each poll is its own VotingPool
- *         contract with isolated Merkle tree, nullifier set, and tallies.
- *         The caller of createPoll() becomes the owner (admin) of the new pool.
+ * @title PollFactory
+ * @notice Deploys VotingPool instances. Caller of createPoll() becomes the pool admin.
  */
 contract PollFactory {
-    /// @notice Shared PLONK verifier for every pool created by this factory.
     IGroth16Verifier public immutable verifier;
 
     struct PollInfo {
@@ -36,9 +33,6 @@ contract PollFactory {
         verifier = IGroth16Verifier(_verifier);
     }
 
-    /**
-     * @notice Deploy a new VotingPool. Caller becomes admin.
-     */
     function createPoll(
         VotingPool.EligibilityMode mode,
         string calldata proposal,

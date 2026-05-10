@@ -1,4 +1,4 @@
-/** Phần tử trường ~254 bit (giống generate_input.js: 31 byte ngẫu nhiên) */
+// 31 random bytes = ~248-bit field element, safely below BN254 scalar field order
 export function randomFieldElement(): bigint {
   const buf = new Uint8Array(31)
   crypto.getRandomValues(buf)

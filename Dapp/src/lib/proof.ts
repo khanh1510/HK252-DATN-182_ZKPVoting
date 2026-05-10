@@ -1,19 +1,3 @@
-/**
- * Browser-side Groth16 proof generation for the universal vote.circom.
- *
- * Public signals (7):
- *   [merkleRoot, nullifierHash, voteCommitment,
- *    numCandidates, totalVotes, maxPerCandidate, allowAbstain]
- *
- * votes[8] layout:
- *   votes[0]   = abstain weight (0 unless allowAbstain and voter chooses abstain)
- *   votes[1..N] = vote weight for real candidate i
- *
- * Voting modes (detected from totalVotes + maxPerCandidate):
- *   maxPerCandidate=1, totalVotes=1  → single choice
- *   maxPerCandidate=1, totalVotes>1  → multiple choice
- *   maxPerCandidate>1               → cumulative
- */
 import type { IncrementalMerkleTree } from '@zk-kit/incremental-merkle-tree'
 import { appConfig } from '@/config'
 import { getPoseidon } from './poseidon'

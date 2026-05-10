@@ -1,27 +1,15 @@
 'use strict';
 
-/**
- * PIPELINE.JS
- * Run full ZK-SNARK pipeline.
- */
-
 const {execSync} = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-/**
- * Application configuration.
- */
 const CONFIG = {
   SCRIPTS_DIR: 'scripts',
   BUILD_DIR: 'build',
   INPUT_DIR: 'inputs',
 };
 
-/**
- * Run a node script synchronously.
- * @param {string} scriptName
- */
 function runScript(scriptName) {
   const scriptPath = path.join(CONFIG.SCRIPTS_DIR, scriptName);
 
@@ -33,18 +21,12 @@ function runScript(scriptName) {
   }
 }
 
-/**
- * Check required tools and directories.
- */
 function checkPrerequisites() {
   checkCircomInstalled();
   installNodeModulesIfNeeded();
   ensureDirectories();
 }
 
-/**
- * Check circom installation.
- */
 function checkCircomInstalled() {
   try {
     execSync('circom --version', {stdio: 'pipe'});
@@ -54,36 +36,23 @@ function checkCircomInstalled() {
   }
 }
 
-/**
- * Install node modules if missing.
- */
 function installNodeModulesIfNeeded() {
   if (!fs.existsSync('node_modules')) {
     execSync('npm install', {stdio: 'inherit'});
   }
 }
 
-/**
- * Ensure required directories exist.
- */
 function ensureDirectories() {
   createDirectoryIfNotExists(CONFIG.BUILD_DIR);
   createDirectoryIfNotExists(CONFIG.INPUT_DIR);
 }
 
-/**
- * Create directory if it does not exist.
- * @param {string} dirPath
- */
 function createDirectoryIfNotExists(dirPath) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, {recursive: true});
   }
 }
 
-/**
- * Main pipeline execution.
- */
 function main() {
   const startTime = Date.now();
 
