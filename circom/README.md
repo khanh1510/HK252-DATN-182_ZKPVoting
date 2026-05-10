@@ -1,48 +1,48 @@
-# code/ — Circom Circuit & Groth16 Pipeline
+# circom/ — Circom Circuit & Groth16 Pipeline
 
-Thư mục off-chain: mạch ZKP viết bằng Circom 2.0, các script Node.js tự động
-hóa toàn bộ pipeline từ compile → trusted setup → prove → export Solidity verifier.
+Off-chain directory: ZKP circuit written in Circom 2.0 and Node.js scripts that
+automate the full pipeline from compile → trusted setup → prove → export Solidity verifier.
 
 ---
 
-## Cấu trúc thư mục
+## Directory Structure
 
 ```
-code/
+circom/
 ├── circuits/
 │   ├── hasher.circom        ← Poseidon hash components
 │   ├── merkleTree.circom    ← Merkle inclusion proof
-│   └── vote.circom          ← Mạch chính (entry point)
+│   └── vote.circom          ← Main circuit (entry point)
 ├── scripts/
-│   ├── pipeline.js          ← Orchestrator: chạy bước 1–6 liền mạch
-│   ├── compile.js           ← Bước 1: circom → R1CS + WASM
-│   ├── trusted_setup.js     ← Bước 2: Powers of Tau + Groth16 Phase 2
-│   ├── generate_input.js    ← Bước 3: sinh input.json mẫu
-│   ├── compute_witness.js   ← Bước 4: tính witness
-│   ├── prove.js             ← Bước 5: tạo Groth16 proof
-│   ├── verify.js            ← Bước 6: verify proof off-chain
-│   └── export_verifier.js   ← Sinh Groth16Verifier.sol (chạy riêng sau pipeline)
-├── inputs/                  ← input.json sinh ra
-└── build/                   ← Tất cả artifacts (gitignored)
+│   ├── pipeline.js          ← Orchestrator: runs steps 1–6 in sequence
+│   ├── compile.js           ← Step 1: circom → R1CS + WASM
+│   ├── trusted_setup.js     ← Step 2: Powers of Tau + Groth16 Phase 2
+│   ├── generate_input.js    ← Step 3: generate sample input.json
+│   ├── compute_witness.js   ← Step 4: compute witness
+│   ├── prove.js             ← Step 5: generate Groth16 proof
+│   ├── verify.js            ← Step 6: verify proof off-chain
+│   └── export_verifier.js   ← Generate Groth16Verifier.sol (run separately after pipeline)
+├── inputs/                  ← Generated input.json
+└── build/                   ← All artifacts (gitignored)
 ```
 
 ---
 
-## Cài đặt
+## Installation
 
 ```bash
 npm install
 ```
 
-Yêu cầu Circom 2.0+ cài sẵn (`circom --version`). Xem [SETUP.md](../SETUP.md) nếu chưa cài.
+Requires Circom 2.0+ installed (`circom --version`).
 
 ---
 
-## Chạy pipeline
+## Running the Pipeline
 
 ```bash
 npm run pipeline                    # compile + setup + input + witness + prove + verify
-node scripts/export_verifier.js     # sinh Groth16Verifier.sol → copy sang evm/contracts/
+node scripts/export_verifier.js     # generate Groth16Verifier.sol → copy to smart_contract/contracts/
 ```
 
 ---
@@ -51,64 +51,49 @@ node scripts/export_verifier.js     # sinh Groth16Verifier.sol → copy sang evm
 
 ### `circuits/hasher.circom`
 
-File định nghĩa các template hash dùng chung trong mạch:
-
-**`Hasher()`**
-
-Hash hai field element bằng Poseidon:
+**`Hasher()`** — hashes two field elements using Poseidon:
 
 ```
 inputs: left, right
 output: hash = Poseidon(left, right)
 ```
 
-Dùng tại mỗi tầng của MerkleTreeChecker để tính hash nút cha từ hai nút con.
+Used at each level of `MerkleTreeChecker` to compute the parent node from two children.
 
-**`CommitmentHasher()`**
-
-Tính voter commitment từ bí mật cử tri:
+**`CommitmentHasher()`** — computes a voter commitment:
 
 ```
 inputs:  secret, nullifier
 output:  commitment = Poseidon(secret, nullifier)
 ```
 
-Commitment này là leaf trong Merkle Tree on-chain — đại diện cho danh tính ẩn danh của cử tri. Template này dùng trong `vote.circom` ở constraint 3.
+This commitment is the leaf stored in the on-chain Merkle Tree.
 
-> **Lý do dùng Poseidon thay Keccak-256:** Poseidon cần ~240 constraints trong Circom, Keccak-256 cần ~150.000 constraints — đắt hơn 600 lần. Poseidon được thiết kế tối ưu cho zk-SNARK trên trường hữu hạn.
+> **Why Poseidon instead of Keccak-256:** Poseidon costs ~240 constraints in Circom; Keccak-256 costs ~150,000 — 600× more expensive. Poseidon is designed to be efficient over finite fields used in zk-SNARKs.
 
 ---
 
 ### `circuits/merkleTree.circom`
 
-File định nghĩa các template kiểm tra Merkle inclusion proof:
-
-**`DualMux()`**
-
-Chọn thứ tự (trái, phải) của hai nút dựa trên bit chỉ hướng:
+**`DualMux()`** — selects ordering of two nodes based on a direction bit:
 
 ```
-inputs:  in0, in1, sel
-outputs: outL, outR
-
-sel = 0 → (outL, outR) = (in0, in1)  -- nút hiện tại bên trái
-sel = 1 → (outL, outR) = (in1, in0)  -- nút hiện tại bên phải
+sel = 0 → (outL, outR) = (in0, in1)  -- current node on the left
+sel = 1 → (outL, outR) = (in1, in0)  -- current node on the right
 ```
 
-Ràng buộc `sel * (1 - sel) === 0` đảm bảo `sel` là bit nhị phân.
+Constraint `sel * (1 - sel) === 0` enforces `sel` is binary.
 
-**`MerkleTreeChecker(levels)`**
-
-Template cốt lõi: xác minh một leaf thuộc cây Merkle với root cho trước.
+**`MerkleTreeChecker(levels)`** — verifies a Merkle inclusion proof:
 
 ```
 inputs:
-  leaf              ← voter commitment cần kiểm tra
-  root              ← Merkle root công khai (PUBLIC signal trong vote.circom)
-  pathElements[levels]  ← sibling nodes tại mỗi tầng
-  pathIndices[levels]   ← hướng (0=trái, 1=phải) tại mỗi tầng
+  leaf                  ← voter commitment to verify
+  root                  ← public Merkle root
+  pathElements[levels]  ← sibling nodes at each level
+  pathIndices[levels]   ← direction bits (0=left, 1=right)
 
-Hoạt động:
+Algorithm:
   currentHash[0] = leaf
   for i in 0..levels-1:
       (L, R) = DualMux(currentHash[i], pathElements[i], pathIndices[i])
@@ -116,73 +101,66 @@ Hoạt động:
   CONSTRAINT: root === currentHash[levels]
 ```
 
-Sau `levels = 20` tầng hash, ràng buộc cuối cùng đảm bảo kết quả tính được phải bằng `merkleRoot` public. Nếu leaf không thuộc cây hoặc path sai → ràng buộc không thỏa → proof không thể sinh.
+After `levels = 20` hash rounds, the final constraint ensures the computed root equals the public `merkleRoot`. If the leaf is not in the tree or the path is wrong, the constraint fails and no valid proof can be generated.
 
-**`MerkleTreeInclusionProof(levels)`**
-
-Wrapper nhẹ của `MerkleTreeChecker`, thêm output `isValid = 1`. Dùng khi nhúng vào circuit lớn hơn cần output boolean.
+**`MerkleTreeInclusionProof(levels)`** — lightweight wrapper around `MerkleTreeChecker` with an `isValid = 1` output signal.
 
 ---
 
 ### `circuits/vote.circom`
 
-Mạch chính — entry point. Định nghĩa toàn bộ logic mà cử tri phải chứng minh.
+Main circuit — entry point. Defines all logic a voter must prove.
 
-**Template `Vote(levels, maxCandidates)`**
+**Template `Vote(levels=20, maxCandidates=8)`**
 
-Khởi tạo với `levels = 20` (độ sâu Merkle Tree) và `maxCandidates = 8` (giới hạn cứng số ứng viên).
-
-**Tín hiệu:**
+**Signals:**
 
 ```
-PUBLIC (4 signals):
-  merkleRoot      ← root Merkle Tree hiện tại on-chain
-  nullifierHash   ← Poseidon(secret) — định danh ẩn danh, ngăn double vote
-  voteCommitment  ← Poseidon(candidateIndex, blinding) — cam kết ẩn phiếu
-  numCandidates   ← số lựa chọn của poll này (2..maxCandidates)
+PUBLIC (7):
+  merkleRoot       ← current on-chain Merkle root
+  nullifierHash    ← Poseidon(secret) — anonymous ID, prevents double vote
+  voteCommitment   ← Poseidon(votes[0..7], blinding) — hidden ballot commitment
+  numCandidates    ← total slots incl. abstain at slot 0 (2..8)
+  totalVotes       ← voting power per voter (1..255)
+  maxPerCandidate  ← max votes for any single slot (1..totalVotes)
+  allowAbstain     ← 1 if blank ballot allowed, 0 otherwise
 
-PRIVATE (46 signals):
-  secret          ← bí mật 254-bit của cử tri
-  nullifier       ← 254-bit random kết hợp với secret
-  candidateIndex  ← 0=abstain, 1..numCandidates-1=ứng viên thực
-  blinding        ← 254-bit random che voteCommitment
-  pathElements[20]← sibling nodes trên đường từ leaf đến root
-  pathIndices[20] ← 0=trái / 1=phải tại mỗi tầng
+PRIVATE:
+  secret           ← voter 254-bit secret
+  nullifier        ← 254-bit random combined with secret
+  votes[8]         ← integer allocation per slot (votes[0]=abstain)
+  blinding         ← random hiding factor
+  pathElements[20] ← sibling nodes on path from leaf to root
+  pathIndices[20]  ← 0=left / 1=right at each level
 ```
 
-**6 ràng buộc:**
+**12 constraints:**
 
 ```
-C1  numCandidates >= 2
-    Dùng GreaterEqThan(8) — đảm bảo poll có ít nhất abstain + 1 ứng viên.
-
-C2  numCandidates <= maxCandidates (8)
-    Dùng LessEqThan(8) — giữ trong giới hạn cứng của circuit.
-
-C3  candidateIndex < numCandidates
-    Dùng LessThan(8) — cử tri không thể vote ứng viên ngoài phạm vi poll.
-
-C4  commitment = Poseidon(secret, nullifier)
-    + MerkleTreeChecker: commitment ∈ tree với root = merkleRoot
-    Kết hợp hai kiểm tra: tính đúng commitment và xác minh nó tồn tại trong cây.
-
-C5  nullifierHash == Poseidon(secret)
-    Ràng buộc nullifierHash public phải khớp với secret private.
-    Contract dùng nullifierHash để đánh dấu "đã vote" mà không biết secret.
-
-C6  voteCommitment == Poseidon(candidateIndex, blinding)
-    Trái tim của commit-reveal: ràng buộc voteCommitment public gắn chặt
-    với candidateIndex private — nhưng không tiết lộ candidateIndex.
+C1  2 ≤ numCandidates         (GreaterEqThan)
+C2  numCandidates ≤ 8         (LessEqThan)
+C3  1 ≤ totalVotes ≤ 255      (Num2Bits + GreaterEqThan)
+C4  1 ≤ maxPerCandidate ≤ totalVotes
+C5  allowAbstain is binary
+C6  Per-slot: 0 ≤ votes[i] ≤ 255, votes[i] ≤ maxPerCandidate,
+    votes[i] = 0 for i ≥ numCandidates
+C7  votes[0] = 0 when allowAbstain = 0
+C8  votes[0] * realSum = 0   (abstain and real votes are mutually exclusive)
+C9  totalUsed ≥ 1            (must cast at least one vote)
+C10 totalUsed ≤ totalVotes
+C11 commitment = Poseidon(secret, nullifier) is in the Merkle tree (20 levels)
+C12 nullifierHash = Poseidon(secret)
+C13 voteCommitment = Poseidon(votes[0..7], blinding)
 ```
 
-**Khai báo main:**
+**Voting modes** (determined by `totalVotes` + `maxPerCandidate`):
 
-```circom
-component main {public [merkleRoot, nullifierHash, voteCommitment, numCandidates]}
-    = Vote(20, 8);
-```
-
-4 tín hiệu `{}` là public — xuất ra `public.json` khi prove. Phần còn lại là private.
+| totalVotes | maxPerCandidate | Mode |
+|---|---|---|
+| 1 | 1 | Single choice |
+| K | 1 | Multiple choice |
+| N | N | Cumulative |
+| N | C | Cumulative with cap |
 
 ---
 
@@ -190,156 +168,154 @@ component main {public [merkleRoot, nullifierHash, voteCommitment, numCandidates
 
 ### `scripts/compile.js`
 
-Gọi Circom CLI biên dịch `circuits/vote.circom`:
+Compiles `circuits/vote.circom` using the Circom CLI:
 
 ```
 circom circuits/vote.circom --r1cs --wasm --sym --output build/
 ```
 
-Đầu ra:
-- `build/vote.r1cs` — hệ ràng buộc R1CS (Rank-1 Constraint System).
-- `build/vote_js/vote.wasm` — witness generator WebAssembly.
-- `build/vote.sym` — debug symbols (tên signal → index).
+Output:
+- `build/vote.r1cs` — R1CS constraint system.
+- `build/vote_js/vote.wasm` — witness generator (WebAssembly).
+- `build/vote.sym` — debug symbols (signal name → index).
 
 ---
 
 ### `scripts/trusted_setup.js`
 
-Thực hiện Groth16 trusted setup hai giai đoạn. Có cơ chế cache: so sánh SHA-256 của `vote.r1cs` với lần trước, bỏ qua Phase 2 nếu không đổi.
+Performs two-phase Groth16 trusted setup. Caches by comparing SHA-256 of `vote.r1cs` — skips Phase 2 if unchanged.
 
-**Phase 1 — Powers of Tau (universal):**
+**Phase 1 — Powers of Tau (universal, reusable):**
 
 ```
 snarkjs powersoftau new bn128 16 pot16_0000.ptau
-snarkjs powersoftau contribute pot16_0000.ptau pot16_0001.ptau -e="<random entropy>"
+snarkjs powersoftau contribute pot16_0000.ptau pot16_0001.ptau -e="<entropy>"
 snarkjs powersoftau prepare phase2 pot16_0001.ptau pot16_final.ptau
 ```
 
-- `bn128` = đường cong BN254 (cùng với EVM).
-- `power = 16` → hỗ trợ tối đa $2^{16} = 65.536$ constraints.
-- File `pot16_final.ptau` (~4 MB) không phụ thuộc circuit, tái sử dụng mãi mãi.
-- Entropy ngẫu nhiên được sinh bằng `crypto.randomBytes(32)`.
+- `power = 16` → supports up to 2^16 = 65,536 constraints.
+- `pot16_final.ptau` (~4 MB) is circuit-agnostic and reusable.
 
 **Phase 2 — Groth16 circuit-specific:**
 
 ```
 snarkjs groth16 setup vote.r1cs pot16_final.ptau vote_0000.zkey
-snarkjs zkey contribute vote_0000.zkey vote_final.zkey -e="<random entropy>"
+snarkjs zkey contribute vote_0000.zkey vote_final.zkey -e="<entropy>"
 snarkjs zkey export verificationkey vote_final.zkey verification_key.json
 ```
 
-- `vote_final.zkey` (~10–15 MB) là proving key, gắn chặt với `vote.circom`.
-- **Phải chạy lại khi sửa `vote.circom`**: `node scripts/trusted_setup.js --force`
+- `vote_final.zkey` (~10–15 MB) is the proving key, tied to `vote.circom`.
+- **Must re-run when `vote.circom` changes:** `node scripts/trusted_setup.js --force`
 
 ---
 
 ### `scripts/generate_input.js`
 
-Sinh `inputs/input.json` mẫu cho một cử tri và một lựa chọn.
+Generates `inputs/input.json` for a sample voter.
 
 ```bash
-node scripts/generate_input.js                          # 3 ứng viên, vote=1
-CANDIDATE=0 NUM_CANDIDATES=5 node scripts/generate_input.js   # abstain, 5 ứng viên
-CANDIDATE=3 NUM_CANDIDATES=4 node scripts/generate_input.js   # vote=3
+node scripts/generate_input.js                                          # 3 candidates, vote slot 1
+NUM_CANDIDATES=4 CHOICES=1,2 TOTAL_VOTES=2 node scripts/generate_input.js
+CHOICES=0 node scripts/generate_input.js                                # abstain
 ```
 
-Quá trình:
-1. Sinh ngẫu nhiên `secret`, `nullifier`, `blinding` (254-bit via `crypto.randomBytes(31)`).
-2. Tính `commitment = Poseidon(secret, nullifier)`.
-3. Insert commitment vào `IncrementalMerkleTree` (depth 20, từ @zk-kit).
-4. Lấy Merkle proof tại index 0 → `pathElements[]`, `pathIndices[]`.
-5. Tính `nullifierHash = Poseidon(secret)`.
-6. Tính `voteCommitment = Poseidon(candidateIndex, blinding)`.
-7. Ghi tất cả vào `inputs/input.json`.
+Steps:
+1. Generate random `secret`, `nullifier`, `blinding` (254-bit via `crypto.randomBytes(31)`).
+2. Compute `commitment = Poseidon(secret, nullifier)`.
+3. Insert commitment into `IncrementalMerkleTree` (depth 20).
+4. Get Merkle proof at index 0 → `pathElements[]`, `pathIndices[]`.
+5. Compute `nullifierHash = Poseidon(secret)`.
+6. Compute `voteCommitment = Poseidon(votes[0..7], blinding)`.
+7. Write everything to `inputs/input.json`.
 
 ---
 
 ### `scripts/compute_witness.js`
 
-Chạy WASM witness generator với input:
+Runs the WASM witness generator:
 
 ```
 node build/vote_js/generate_witness.js build/vote_js/vote.wasm inputs/input.json build/witness.wtns
 ```
 
-Đầu ra `witness.wtns` là tập hợp tất cả giá trị tín hiệu (public + private) thỏa tất cả ràng buộc.
+`witness.wtns` contains all signal values (public + private) satisfying all constraints.
 
 ---
 
 ### `scripts/prove.js`
 
-Sinh Groth16 proof từ witness và proving key:
+Generates a Groth16 proof from the witness and proving key:
 
 ```
 snarkjs groth16 prove build/vote_final.zkey build/witness.wtns build/proof.json build/public.json
 ```
 
-- `proof.json` chứa `{pi_a, pi_b, pi_c}` — ba phần tử nhóm (G1, G2, G1) trên BN254.
-- `public.json` chứa 4 public signals: `[merkleRoot, nullifierHash, voteCommitment, numCandidates]`.
+- `proof.json` contains `{pi_a, pi_b, pi_c}` — three group elements on BN254.
+- `public.json` contains the 7 public signals.
 
 ---
 
 ### `scripts/verify.js`
 
-Xác minh proof off-chain và in 4 public signals:
+Verifies the proof off-chain:
 
 ```
 snarkjs groth16 verify build/verification_key.json build/public.json build/proof.json
 ```
 
-In từng public signal kèm tên để kiểm tra thủ công, sau đó in `Proof is VALID` hoặc `INVALID`.
+Prints each public signal with its name, then `Proof is VALID` or `INVALID`.
 
 ---
 
 ### `scripts/export_verifier.js`
 
-Sinh Solidity verifier từ proving key:
+Generates the Solidity verifier and copies it to the contracts directory:
 
 ```
 snarkjs zkey export solidityverifier build/vote_final.zkey build/Groth16Verifier.sol
 ```
 
-Sau đó **tự động copy** `build/Groth16Verifier.sol` → `evm/contracts/Groth16Verifier.sol`.
+Then automatically copies `build/Groth16Verifier.sol` → `smart_contract/contracts/Groth16Verifier.sol`.
 
-File sinh ra (~200 dòng) chứa:
-- Verification key constants nhúng cứng (các điểm G1/G2 của `vk_alpha`, `vk_beta`, `vk_gamma`, `vk_delta`, 5 điểm IC).
-- Hàm `verifyProof(pA, pB, pC, pubSignals)` gọi EVM precompile bn256Pairing (0x08).
+The generated file (~200 lines) contains:
+- Hardcoded verification key constants (G1/G2 points for `vk_alpha`, `vk_beta`, `vk_gamma`, `vk_delta`, 8 IC points for 7 public signals).
+- `verifyProof(pA, pB, pC, pubSignals)` which calls EVM precompile bn256Pairing (0x08).
 
 ---
 
-## Artifacts sau pipeline
+## Build Artifacts
 
-| File | Kích thước | Mục đích |
-|------|-----------|---------|
+| File | Size | Purpose |
+|------|------|---------|
 | `build/vote.r1cs` | ~1–2 MB | Constraint system |
-| `build/vote_js/vote.wasm` | ~500 KB | Witness generator (dùng ở browser) |
-| `build/pot16_final.ptau` | ~4 MB | Phase 1 — tái sử dụng được |
-| `build/vote_final.zkey` | ~10–15 MB | Proving key (dùng ở browser) |
-| `build/verification_key.json` | ~5 KB | Nhúng vào Groth16Verifier.sol |
-| `build/Groth16Verifier.sol` | ~200 dòng | Solidity verifier |
-| `build/proof.json` | ~1 KB | Proof mẫu `{pi_a, pi_b, pi_c}` |
-| `build/public.json` | <1 KB | 4 public signals mẫu |
+| `build/vote_js/vote.wasm` | ~500 KB | Witness generator (used in browser) |
+| `build/pot16_final.ptau` | ~4 MB | Phase 1 — reusable |
+| `build/vote_final.zkey` | ~10–15 MB | Proving key (used in browser) |
+| `build/verification_key.json` | ~5 KB | Embedded in Groth16Verifier.sol |
+| `build/Groth16Verifier.sol` | ~200 lines | Solidity verifier |
+| `build/proof.json` | ~1 KB | Sample proof `{pi_a, pi_b, pi_c}` |
+| `build/public.json` | <1 KB | Sample 7 public signals |
 
 ---
 
-## npm scripts
+## npm Scripts
 
-| Script | Lệnh | Mô tả |
-|--------|------|-------|
-| `pipeline` | `node scripts/pipeline.js` | Chạy cả 6 bước liên tiếp |
-| `compile` | `node scripts/compile.js` | Chỉ compile circuit |
-| `setup` | `node scripts/trusted_setup.js` | Chỉ trusted setup (có cache) |
-| `input` | `node scripts/generate_input.js` | Chỉ sinh input mẫu |
-| `witness` | `node scripts/compute_witness.js` | Chỉ tính witness |
-| `prove` | `node scripts/prove.js` | Chỉ sinh proof |
-| `verify` | `node scripts/verify.js` | Chỉ verify proof |
+| Script | Command | Description |
+|--------|---------|-------------|
+| `pipeline` | `node scripts/pipeline.js` | Run all 6 steps in sequence |
+| `compile` | `node scripts/compile.js` | Compile circuit only |
+| `setup` | `node scripts/trusted_setup.js` | Trusted setup only (with cache) |
+| `input` | `node scripts/generate_input.js` | Generate sample input only |
+| `witness` | `node scripts/compute_witness.js` | Compute witness only |
+| `prove` | `node scripts/prove.js` | Generate proof only |
+| `verify` | `node scripts/verify.js` | Verify proof only |
 
 ---
 
 ## Dependencies
 
-| Package | Phiên bản | Dùng cho |
-|---------|-----------|---------|
-| `snarkjs` | 0.7.5 | Toàn bộ pipeline Groth16 |
-| `circomlibjs` | 0.1.7 | Tính Poseidon trong Node.js (`generate_input`) |
-| `@zk-kit/incremental-merkle-tree` | 1.1.0 | Merkle Tree JS tương thích với Solidity |
+| Package | Version | Used for |
+|---------|---------|----------|
+| `snarkjs` | 0.7.5 | Full Groth16 pipeline |
+| `circomlibjs` | 0.1.7 | Poseidon in Node.js (`generate_input`) |
+| `@zk-kit/incremental-merkle-tree` | 1.1.0 | JS Merkle Tree compatible with Solidity |

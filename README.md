@@ -1,36 +1,36 @@
-# ZK Anonymous Voting — Hệ thống bỏ phiếu ẩn danh trên blockchain
+# ZK Anonymous Voting — Decentralized Voting System on Blockchain
 
-Hệ thống bỏ phiếu điện tử phi tập trung sử dụng **zk-SNARK Groth16** để đảm bảo:
+A decentralized e-voting system using **zk-SNARK Groth16** to guarantee:
 
-- **Anonymity (Ẩn danh):** không thể liên kết địa chỉ ví với phiếu bầu cụ thể.
-- **Ballot Secrecy (Bí mật phiếu):** nội dung phiếu ẩn trong suốt Voting phase nhờ commit-reveal.
-- **Verifiability (Xác minh được):** bất kỳ ai cũng kiểm tra kết quả trên blockchain.
-- **Double-vote prevention:** nullifier on-chain ngăn bỏ phiếu hai lần.
+- **Anonymity:** no link between a wallet address and a specific ballot.
+- **Ballot Secrecy:** vote content is hidden during the Voting phase via commit-reveal.
+- **Verifiability:** anyone can verify results on-chain.
+- **Double-vote prevention:** on-chain nullifier prevents casting a vote twice.
 
 ---
 
-## Tổng quan kiến trúc
+## Architecture Overview
 
 ```
-DATN/
-├── code/    ─ Off-chain: Circom circuit + snarkjs Groth16 pipeline
-├── evm/     ─ On-chain:  Hardhat smart contracts (Solidity 0.8.20)
-└── web/     ─ Frontend:  React 19 + TypeScript + shadcn/ui dApp
+source_code/
+├── circom/          — Off-chain: Circom circuit + snarkjs Groth16 pipeline
+├── smart_contract/  — On-chain:  Hardhat smart contracts (Solidity 0.8.20)
+└── Dapp/            — Frontend:  React 19 + TypeScript + shadcn/ui dApp
 ```
 
-Luồng tổng thể từ compile đến production:
+End-to-end flow from compile to production:
 
 ```
 vote.circom
     │
     ├─[circom compile]─► vote.r1cs + vote_js/vote.wasm
     │
-    ├─[snarkjs Phase 1]─► pot16_final.ptau   (Powers of Tau, dùng lại được)
+    ├─[snarkjs Phase 1]─► pot16_final.ptau   (Powers of Tau, reusable)
     │
     ├─[snarkjs Phase 2]─► vote_final.zkey    (proving key, per-circuit)
     │                  ─► verification_key.json
     │
-    └─[snarkjs export]──► Groth16Verifier.sol ──► evm/contracts/
+    └─[snarkjs export]──► Groth16Verifier.sol ──► smart_contract/contracts/
                                                          │
                                               [hardhat deploy Sepolia]
                                                          │
@@ -41,110 +41,122 @@ vote.circom
                                                               │
                                                     [React dApp: /admin + /]
                                                     browser generates Groth16 proof
-                                                    via snarkjs WASM (8–12s)
+                                                    via snarkjs WASM (~8–12s)
 ```
 
 ---
 
-## Vòng đời một cuộc bầu cử
+## Poll Lifecycle
 
 ```
 REGISTRATION ──────► VOTING ──────► REVEAL ──────► ENDED
       │                   │               │              │
-  Cử tri gửi          Bỏ phiếu:       Tiết lộ:      Kết quả
-  commitment          - sinh proof     - gửi          công khai
-  vào Merkle          - gửi           candidateIndex  qua
-  Tree on-chain       voteCommit      + blinding      getResults()
-                      (ẩn phiếu)      - contract
-                                      kiểm tra
-                                      commitment
+  Voter submits       Cast vote:       Reveal:       Results
+  commitment to       - generate       - submit       public
+  Merkle Tree         - proof          candidateIndex via
+  on-chain            - submit         + blinding     getResults()
+                      voteCommit       - contract
+                      (hidden)         verifies
+                                       commitment
 ```
 
-Admin (owner của VotingPool) điều khiển chuyển giai đoạn thủ công
-(`startVoting`, `startReveal`, `endPoll`), hoặc deadline tự động tiến.
+Admin (VotingPool owner) controls phase transitions manually
+(`startVoting`, `startReveal`, `endPoll`), or deadlines advance automatically.
 
 ---
 
-## Hai chế độ đăng ký
+## Registration Modes
 
-| Chế độ | Cách đăng ký | Trường hợp dùng |
-|--------|-------------|-----------------|
-| `OPEN (0)` | Bất kỳ địa chỉ nào tự gọi `register()` | DAO governance, mở |
-| `ADMIN_APPROVED (1)` | Cần chữ ký EIP-712 `VoterApproval` từ admin | Công ty, tổ chức nhỏ |
+| Mode | How to register | Use case |
+|------|----------------|----------|
+| `OPEN (0)` | Any address calls `register()` | DAO governance, public |
+| `ADMIN_APPROVED (1)` | Requires EIP-712 `VoterApproval` signature from admin | Company, private org |
 
-Trong cả hai chế độ, commitment được insert vào cùng Merkle Tree và circuit không đổi — chỉ có hàm `register()` kiểm tra thêm chữ ký.
-
----
-
-## Các thành phần chính
-
-### Circuit (`code/circuits/vote.circom`)
-
-Template `Vote(levels=20, maxCandidates=8)` — 6 ràng buộc:
-
-| # | Ràng buộc | Đảm bảo |
-|---|-----------|---------|
-| 1 | `2 ≤ numCandidates ≤ 8` | Số ứng viên hợp lệ |
-| 2 | `0 ≤ candidateIndex < numCandidates` | Không vote ứng viên ngoài phạm vi |
-| 3 | `commitment = Poseidon(secret, nullifier)` + Merkle inclusion | Cử tri đã đăng ký |
-| 4 | Merkle path hợp lệ qua 20 tầng Poseidon | Leaf thuộc cây đúng |
-| 5 | `nullifierHash = Poseidon(secret)` | Nullifier tính đúng |
-| 6 | `voteCommitment = Poseidon(candidateIndex, blinding)` | Commit phiếu đúng |
-
-4 tín hiệu public: `merkleRoot`, `nullifierHash`, `voteCommitment`, `numCandidates`
-
-6 tín hiệu private: `secret`, `nullifier`, `candidateIndex`, `blinding`, `pathElements[20]`, `pathIndices[20]`
-
-### Smart Contracts (`evm/contracts/`)
-
-| Contract | Vai trò |
-|----------|---------|
-| `PollFactory` | Factory triển khai VotingPool theo yêu cầu; lưu registry poll |
-| `VotingPool` | Quản lý 1 cuộc bầu cử: 4 phases, 2 modes, castVote + revealVote |
-| `Groth16Verifier` | Auto-generated bởi snarkjs; xác minh pairing trên BN254 |
-| `MockGroth16Verifier` | Stub cho test — luôn trả `true` |
-| `IGroth16Verifier` | Interface cho cả verifier thật và mock |
-| `IncrementalBinaryTree` | Thư viện Merkle Tree incremental (Solidity) |
-| `Bn254Poseidon2` | Poseidon T=3 trên BN254 (inline assembly, tối ưu gas) |
-
-### dApp (`web/src/`)
-
-Hai route:
-- `/` — **Voter Panel**: duyệt poll, đăng ký (OPEN hoặc nhập coupon EIP-712), cast hidden vote, reveal, xem kết quả.
-- `/admin` — **Admin Panel**: tạo poll mới, ký coupon EIP-712 cho cử tri (ADMIN_APPROVED), điều khiển phases.
+In both modes, the commitment is inserted into the same Merkle Tree and the circuit is unchanged — only `register()` additionally checks the signature.
 
 ---
 
-## Hướng dẫn nhanh
+## Voting Types
+
+The circuit and contract support four voting modes controlled by two parameters set at poll creation:
+
+| `totalVotes` | `maxPerCandidate` | Mode |
+|---|---|---|
+| 1 | 1 | Single choice |
+| K | 1 | Multiple choice (pick up to K) |
+| N | N | Cumulative (distribute N votes freely) |
+| N | C (C < N) | Cumulative with per-candidate cap |
+
+---
+
+## Key Components
+
+### Circuit (`circom/circuits/vote.circom`)
+
+Template `Vote(levels=20, maxCandidates=8)` — 12 constraints:
+
+| # | Constraint | Guarantees |
+|---|-----------|------------|
+| C1–C2 | `2 ≤ numCandidates ≤ 8` | Valid candidate count |
+| C3 | `1 ≤ totalVotes ≤ 255` | Valid voting power |
+| C4 | `1 ≤ maxPerCandidate ≤ totalVotes` | Valid per-slot cap |
+| C5 | `allowAbstain` is binary | Input sanity |
+| C6 | Per-slot range, cap, zero out-of-bounds | Each slot within budget |
+| C7 | `votes[0] = 0` if abstain not allowed | Abstain gate |
+| C8 | Abstain and real votes are mutually exclusive | Vote integrity |
+| C9 | `totalUsed ≥ 1` | Must cast at least one vote |
+| C10 | `totalUsed ≤ totalVotes` | Cannot exceed budget |
+| C11 | `commitment = Poseidon(secret, nullifier)` + Merkle inclusion | Voter is registered |
+| C12 | `nullifierHash = Poseidon(secret)` | Nullifier computed correctly |
+| C13 | `voteCommitment = Poseidon(votes[0..7], blinding)` | Ballot commit is correct |
+
+7 public signals: `merkleRoot`, `nullifierHash`, `voteCommitment`, `numCandidates`, `totalVotes`, `maxPerCandidate`, `allowAbstain`
+
+Private signals: `secret`, `nullifier`, `votes[8]`, `blinding`, `pathElements[20]`, `pathIndices[20]`
+
+### Smart Contracts (`smart_contract/contracts/`)
+
+| Contract | Role |
+|----------|------|
+| `PollFactory` | Factory that deploys VotingPool on demand; stores poll registry |
+| `VotingPool` | Manages one poll: 4 phases, 2 modes, castVote + revealVote, weighted voting |
+| `Groth16Verifier` | Auto-generated by snarkjs; verifies BN254 pairing |
+| `MockGroth16Verifier` | Stub for tests — always returns `true` |
+| `IGroth16Verifier` | Interface for both real and mock verifier |
+| `IncrementalBinaryTree` | Incremental Merkle Tree library (Solidity) |
+| `Bn254Poseidon2` | Poseidon T=3 on BN254 (inline assembly, gas-optimized) |
+
+### dApp (`Dapp/src/`)
+
+Two routes:
+- `/` — **Voter Panel**: browse polls, register (OPEN or paste EIP-712 coupon), cast hidden vote, reveal, view results.
+- `/admin` — **Admin Panel**: create poll, sign EIP-712 coupons for voters (ADMIN_APPROVED), control phases, assign voter weights.
+
+---
+
+## Quick Start
 
 ```bash
-# 1. Cài dependencies cho cả 3 phần
-cd code && npm install && cd ..
-cd evm  && npm install && cd ..
-cd web  && npm install && cd ..
+# 1. Install dependencies for all three parts
+cd circom         && npm install && cd ..
+cd smart_contract && npm install && cd ..
+cd Dapp           && npm install && cd ..
 
 # 2. Compile circuit + trusted setup + sample proof + export verifier
-cd code
+cd circom
 npm run pipeline
-node scripts/export_verifier.js   # sinh Groth16Verifier.sol → evm/contracts/
+node scripts/export_verifier.js   # generates Groth16Verifier.sol → smart_contract/contracts/
 
 # 3. Test contracts
-cd ../evm
+cd ../smart_contract
 npx hardhat test
 
-# 4. Deploy lên Sepolia
-#    (tạo evm/.env trước — xem evm/README.md)
+# 4. Deploy to Sepolia
+#    (create smart_contract/.env first — see smart_contract/README.md)
 npx hardhat run scripts/deploy.js --network sepolia
 
-# 5. Chạy dApp
-cd ../web
-npm run copy-zk     # copy vote.wasm + vote_final.zkey vào public/zk/
+# 5. Run dApp
+cd ../Dapp
+npm run copy-zk     # copy vote.wasm + vote_final.zkey into public/zk/
 npm run dev         # http://localhost:5173
 ```
-
-Hướng dẫn chi tiết: **[SETUP.md](SETUP.md)**
-
-Chi tiết từng module:
-- Circuit & pipeline: **[code/README.md](code/README.md)**
-- Smart contracts: **[evm/README.md](evm/README.md)**
-- dApp frontend: **[web/README.md](web/README.md)**
