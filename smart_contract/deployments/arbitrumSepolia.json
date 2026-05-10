@@ -1,0 +1,14 @@
+{
+  "network": "arbitrumSepolia",
+  "chainId": "421614",
+  "deployedAt": "2026-05-01T16:24:57.924Z",
+  "libraries": {
+    "Bn254Poseidon2": "0xebB385fB89dbb0E7B44f28F8E8A22e72688Fc568"
+  },
+  "verifierKind": "Groth16Verifier",
+  "contracts": {
+    "Groth16Verifier": "0xa6757c18A508cd3D7e8b32FCCc69993F58b86a06",
+    "PollFactory": "0x7381dB1091682bf7F21441A4DC6942E4b8c2a3A7"
+  },
+  "polls": []
+}

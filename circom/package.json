@@ -1,0 +1,25 @@
+{
+  "name": "zk-vote-circuits",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Circom + snarkjs PLONK pipeline for the anonymous voting circuit",
+  "scripts": {
+    "compile": "node scripts/compile.js",
+    "setup": "node scripts/trusted_setup.js",
+    "setup:force": "node scripts/trusted_setup.js --force",
+    "input": "node scripts/generate_input.js",
+    "witness": "node scripts/compute_witness.js",
+    "prove": "node scripts/prove.js",
+    "verify": "node scripts/verify.js",
+    "export-verifier": "node scripts/export_verifier.js",
+    "pipeline": "node scripts/pipeline.js"
+  },
+  "devDependencies": {
+    "snarkjs": "^0.7.5"
+  },
+  "dependencies": {
+    "@zk-kit/incremental-merkle-tree": "^1.1.0",
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7"
+  }
+}

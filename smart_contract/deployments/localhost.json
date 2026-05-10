@@ -1,0 +1,14 @@
+{
+  "network": "localhost",
+  "chainId": "31337",
+  "deployedAt": "2026-05-04T05:23:17.115Z",
+  "libraries": {
+    "Bn254Poseidon2": "0x646B8418F8fA1Fa1778195A46C53346Dd11F7F49"
+  },
+  "verifierKind": "Groth16Verifier",
+  "contracts": {
+    "Groth16Verifier": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "PollFactory": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+  },
+  "polls": []
+}

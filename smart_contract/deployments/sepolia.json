@@ -1,0 +1,14 @@
+{
+  "network": "sepolia",
+  "chainId": "11155111",
+  "deployedAt": "2026-05-01T05:50:14.252Z",
+  "libraries": {
+    "Bn254Poseidon2": "0x646B8418F8fA1Fa1778195A46C53346Dd11F7F49"
+  },
+  "verifierKind": "Groth16Verifier",
+  "contracts": {
+    "Groth16Verifier": "0x6975e91BCe7a042A18Cb1921BFb2CF3Ca45af3B3",
+    "PollFactory": "0xD58E9d40Da167ea47a685305971FdA715780008F"
+  },
+  "polls": []
+}

@@ -1,0 +1,113 @@
+@import 'tailwindcss';
+
+@layer base {
+  :root {
+    --background: 210 20% 97%;
+    --foreground: 220 25% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 12%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 221 83% 96%;
+    --secondary: 210 16% 93%;
+    --secondary-foreground: 220 25% 20%;
+    --muted: 210 16% 93%;
+    --muted-foreground: 220 10% 48%;
+    --accent: 221 83% 97%;
+    --accent-foreground: 221 83% 38%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 12%;
+    --border: 214 20% 89%;
+    --input: 214 20% 93%;
+    --ring: 221 83% 53%;
+    --radius: 0.75rem;
+
+    /* Google Material shadows */
+    --shadow-sm: 0 1px 2px 0 rgba(60,64,67,0.08), 0 1px 3px 1px rgba(60,64,67,0.06);
+    --shadow-md: 0 1px 2px 0 rgba(60,64,67,0.1), 0 2px 6px 2px rgba(60,64,67,0.1);
+    --shadow-lg: 0 4px 8px 3px rgba(60,64,67,0.12), 0 1px 3px rgba(60,64,67,0.1);
+  }
+}
+
+* {
+  border-color: hsl(var(--border));
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+
+/* Smooth transitions for interactive elements */
+button, a, [role="button"] {
+  transition: all 0.15s ease;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Progress bar animation */
+@keyframes progress-fill {
+  from { width: 0%; }
+  to { width: var(--target-width); }
+}
+
+.animate-progress {
+  animation: progress-fill 0.8s ease-out forwards;
+}
+
+/* Pulse animation for loading */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--background)) 50%, hsl(var(--muted)) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Card hover effect */
+.card-hover {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card-hover:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+/* Google-style badge pill */
+.badge-pill {
+  border-radius: 100px;
+}
+
+/* Step indicator */
+.step-active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.step-inactive {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}

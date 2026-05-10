@@ -1,0 +1,63 @@
+# Node modules
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# ===== New untracked folders/files - DO NOT PUSH =====
+
+# Claude settings backup
+.claude/settings.local_backup.json
+
+# GitHub workflows (local only)
+.github/
+
+# Understand Anything cache
+.understand-anything/
+
+# Benchmark & Testing reports
+BENCHMARK_REPORT.md
+TESTING_GUIDE.md
+test1.md
+code/benchmark_results.json
+code/benchmark_results_merkle.json
+code/scripts/benchmark_zkp.js
+code/scripts/stress_merkle.js
+
+# EVM deployment files & gas reports
+evm/deployments/
+evm/gas-report.txt
+evm/scripts/smokeTest.arbitrum.js
+evm/scripts/smokeTest.sepolia.js
+
+# EVM test files (local testing only)
+evm/test/GasBenchmark.test.js
+evm/test/VotingPool.comprehensive.test.js
+evm/test/VotingPool.concurrent.test.js
+evm/test/VotingPool.gasExtended.test.js
+evm/test/VotingPool.realProof.test.js
+evm/test/VotingPool.reveal.test.js
+evm/test/VotingPool.scalability.test.js
+
+# Faucet module
+faucet/
+
+# Report folder
+Report/
+
+# Web hooks (local)
+web/src/hooks/useFaucet.ts

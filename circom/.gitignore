@@ -1,0 +1,14 @@
+node_modules/
+build/*.ptau
+build/*.zkey
+build/*.r1cs
+build/*.wasm
+build/*.sym
+build/*.wtns
+build/proof.json
+build/public.json
+build/witness.wtns
+build/r1cs.sha256
+build/used_nullifiers.json
+build/vote_js/
+inputs/input.json
